@@ -33,7 +33,7 @@ from dataset import (
     split_by_patient,
 )
 from metrics import case_metrics
-from modules import UNet2D
+from modules import ImprovedUNet3D, UNet2D
 
 
 def choose_device(requested: str) -> torch.device:
@@ -267,10 +267,8 @@ def train_one(
     args: argparse.Namespace,
 ) -> tuple[torch.nn.Module, dict]:
     """Fit one model and restore its best validation checkpoint."""
-    if kind != "2d":
-        raise ValueError("This stage supports the 2D baseline only")
-    width = args.width_2d
-    model = UNet2D(width=width)
+    width = args.width_2d if kind == "2d" else args.width_3d
+    model = UNet2D(width=width) if kind == "2d" else ImprovedUNet3D(width=width)
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     loader = _training_loader(kind, train_volumes, args)
@@ -441,7 +439,7 @@ def main() -> None:
     results = {}
     validation_rows = []
     trained_models = {}
-    for kind in ("2d",):
+    for kind in ("2d", "3d"):
         model, profile = train_one(kind, train_data, val_data, device, args.out, args)
         validation, rows = evaluate(
             model, val_data, kind, device, args.bladder_label,
@@ -469,7 +467,7 @@ def main() -> None:
         # The held-out test split is opened only after both models are selected.
         test_data = VolumeDataset(split["test"], size, args.prostate_label, args.crop_xy)
         all_rows = []
-        for kind in ("2d",):
+        for kind in ("2d", "3d"):
             model = trained_models[kind].to(device)
             test, rows = evaluate(
                 model, test_data, kind, device, args.bladder_label,
